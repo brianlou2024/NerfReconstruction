@@ -286,7 +286,6 @@ def render(H, W, focal,
       acc_map: [batch_size]. Accumulated opacity (alpha) along a ray.
       extras: dict with everything returned by render_rays().
     """
-
     if c2w is not None:
         # special case to render full image
         rays_o, rays_d = get_rays(H, W, focal, c2w)
@@ -340,6 +339,8 @@ def render_path(render_poses, hwf, chunk, render_kwargs, gt_imgs=None, savedir=N
 
     H, W, focal = hwf
 
+    print(render_factor)
+    
     if render_factor != 0:
         # Render downsampled for speed
         H = H//render_factor
@@ -468,7 +469,7 @@ def config_parser():
     parser.add_argument("--basedir", type=str, default='./logs/',
                         help='where to store ckpts and logs')
     parser.add_argument("--datadir", type=str,
-                        default='./data/llff/fern', help='input data directory')
+                        default='../Colgate/TestSet9', help='input data directory')
 
     # training options
     parser.add_argument("--netdepth", type=int, default=8,
@@ -568,6 +569,12 @@ def config_parser():
                         help='frequency of testset saving')
     parser.add_argument("--i_video",   type=int, default=50000,
                         help='frequency of render_poses video saving')
+                        
+    # custom
+    parser.add_argument("--iterations",   type=int, default=200000,
+                        help='# of iterations')
+    parser.add_argument("--datatype",   type=str, default='llff',
+                        help='data type')
 
     return parser
 
@@ -585,9 +592,11 @@ def train():
     # Load data
 
     if args.dataset_type == 'llff':
-        images, poses, bds, render_poses, i_test = load_llff_data(args.datadir, args.factor,
+        images, poses, bds, render_poses, i_test = load_llff_data(args.datadir, 
+                                                                  args.factor,
                                                                   recenter=True, bd_factor=.75,
-                                                                  spherify=args.spherify)
+                                                                  spherify=args.spherify,
+                                                                  type=args.datatype)
         hwf = poses[0, :3, -1]
         poses = poses[:, :3, :4]
         print('Loaded llff', images.shape,
@@ -743,7 +752,7 @@ def train():
         print('done')
         i_batch = 0
 
-    N_iters = 1000000
+    N_iters = args.iterations
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
@@ -838,21 +847,21 @@ def train():
             np.save(path, net.get_weights())
             print('saved weights at', path)
 
-        if i % args.i_weights == 0:
+        if (i+1) % args.i_weights == 0:
             for k in models:
-                save_weights(models[k], k, i)
+                save_weights(models[k], k, (i+1))
 
-        if i % args.i_video == 0 and i > 0:
+        if (i+1) % args.i_video == 0 and i > 0:
 
             rgbs, disps = render_path(
                 render_poses, hwf, args.chunk, render_kwargs_test)
             print('Done, saving', rgbs.shape, disps.shape)
             moviebase = os.path.join(
-                basedir, expname, '{}_spiral_{:06d}_'.format(expname, i))
+                basedir, expname, '{}_spiral_{:06d}_'.format(expname, (i+1)))
             imageio.mimwrite(moviebase + 'rgb.mp4',
-                             to8b(rgbs), fps=30, quality=8)
+                             to8b(rgbs), fps=30, quality=10)
             imageio.mimwrite(moviebase + 'disp.mp4',
-                             to8b(disps / np.max(disps)), fps=30, quality=8)
+                             to8b(disps / np.max(disps)), fps=30, quality=10)
 
             if args.use_viewdirs:
                 render_kwargs_test['c2w_staticcam'] = render_poses[0][:3, :4]

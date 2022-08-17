@@ -57,8 +57,6 @@ def _minify(basedir, factors=[], resolutions=[]):
         print('Done')
             
         
-        
-        
 def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
     
     poses_arr = np.load(os.path.join(basedir, 'poses_bounds.npy'))
@@ -94,6 +92,68 @@ def _load_data(basedir, factor=None, width=None, height=None, load_imgs=True):
         return
     
     imgfiles = [os.path.join(imgdir, f) for f in sorted(os.listdir(imgdir)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
+    if poses.shape[-1] != len(imgfiles):
+        print( 'Mismatch between imgs {} and poses {} !!!!'.format(len(imgfiles), poses.shape[-1]) )
+        return
+    
+    sh = imageio.imread(imgfiles[0]).shape
+    poses[:2, 4, :] = np.array(sh[:2]).reshape([2, 1])
+    poses[2, 4, :] = poses[2, 4, :] * 1./factor
+    
+    if not load_imgs:
+        return poses, bds
+    
+    def imread(f):
+        if f.endswith('png'):
+            return imageio.imread(f, ignoregamma=True)
+        else:
+            return imageio.imread(f)
+        
+    imgs = imgs = [imread(f)[...,:3]/255. for f in imgfiles]
+    imgs = np.stack(imgs, -1)  
+    
+    print('Loaded image data', imgs.shape, poses[:,-1,0])
+    return poses, bds, imgs       
+        
+def _load_data_custom(basedir, factor=None, width=None, height=None, load_imgs=True):
+    poses_arr = np.load(os.path.join(basedir, 'poses_bounds.npy'))
+    poses = poses_arr[:, :-2].reshape([-1, 3, 5]).transpose([1,2,0])
+    bds = poses_arr[:, -2:].transpose([1,0])
+    
+    img0 = [os.path.join(basedir, 'images/left', f) for f in sorted(os.listdir(os.path.join(basedir, 'images/left'))) \
+            if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')][0]
+    sh = imageio.imread(img0).shape
+    
+    sfx = ''
+    
+    if factor is not None:
+        sfx = '_{}'.format(factor)
+        _minify(basedir, factors=[factor])
+        factor = factor
+    elif height is not None:
+        factor = sh[0] / float(height)
+        width = int(sh[1] / factor)
+        _minify(basedir, resolutions=[[height, width]])
+        sfx = '_{}x{}'.format(width, height)
+    elif width is not None:
+        factor = sh[1] / float(width)
+        height = int(sh[0] / factor)
+        _minify(basedir, resolutions=[[height, width]])
+        sfx = '_{}x{}'.format(width, height)
+    else:
+        factor = 1
+    
+    imgdirL = os.path.join(basedir, 'images/left' + sfx)
+    if not os.path.exists(imgdirL):
+        print( imgdirL, 'does not exist, returning' )
+        return
+    imgdirR = os.path.join(basedir, 'images/right' + sfx)
+    if not os.path.exists(imgdirR):
+        print( imgdirR, 'does not exist, returning' )
+        return
+    
+    imgfiles = [os.path.join(imgdirL, f) for f in sorted(os.listdir(imgdirL)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')]
+    imgfiles.extend([os.path.join(imgdirR, f) for f in sorted(os.listdir(imgdirR)) if f.endswith('JPG') or f.endswith('jpg') or f.endswith('png')])
     if poses.shape[-1] != len(imgfiles):
         print( 'Mismatch between imgs {} and poses {} !!!!'.format(len(imgfiles), poses.shape[-1]) )
         return
@@ -240,10 +300,13 @@ def spherify_poses(poses, bds):
     return poses_reset, new_poses, bds
     
 
-def load_llff_data(basedir, factor=8, recenter=True, bd_factor=.75, spherify=False, path_zflat=False):
+def load_llff_data(basedir, factor=None, recenter=True, bd_factor=.75, spherify=False, path_zflat=False, type="llff"):
     
+    if type == "llff":
+        poses, bds, imgs = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
+    elif type == "colgate":
+        poses, bds, imgs = _load_data_custom(basedir, factor=None) # factor=8 downsamples original imgs by 8x
 
-    poses, bds, imgs = _load_data(basedir, factor=factor) # factor=8 downsamples original imgs by 8x
     print('Loaded', basedir, bds.min(), bds.max())
     
     # Correct rotation matrix ordering and move variable dim to axis 0
