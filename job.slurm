@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=close10   # create a short name for your job
+#SBATCH --job-name=sphere2_cropped  # create a short name for your job
 #SBATCH --nodes=1                # node count
 #SBATCH --ntasks=1      # number of tasks per nodes
 #SBATCH --cpus-per-task=4        # cpu-cores per task (>1 if multi-threaded tasks)
@@ -11,14 +11,16 @@
 #SBATCH --mail-type=fail         # send mail if job fails
 #SBATCH --mail-user=blou@princeton.edu
 
-DATASET_PATH=/scratch/gpfs/blou/Colgate/TestClone6
-EXPERIMENT_NAME=close6_5
-ITERATIONS=100000
+
+DATASET_PATH=/scratch/gpfs/blou/Colgate/Sphere2_Cropped
+EXPERIMENT_NAME=sphere2_cropped
+ITERATIONS=200000
+CONFIG=configs/config_sphere.txt
 
 module purge
 module load anaconda3/2021.5
 conda activate nerf
 
-python run_nerf.py --config config_sphere.txt --expname $EXPERIMENT_NAME --datadir $DATASET_PATH --iterations $ITERATIONS
+python run_nerf.py --config $CONFIG --expname $EXPERIMENT_NAME --datadir $DATASET_PATH --iterations $ITERATIONS 
 
 python gen_video.py --expname $EXPERIMENT_NAME --iterations $ITERATIONS --datadir $DATASET_PATH
